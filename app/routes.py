@@ -191,6 +191,55 @@ def get_products_by_id(id):
         "created_at": product.created_at.isoformat() if product.created_at else None,
     }), 200
 
+@bp.route('/products/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_products(id):
+
+    data = request.get_json(silent=True)
+
+    if not data:
+        return jsonify({
+            "error": "Invalid or missing json payload"
+        }), 400
+
+    product = Products.query.get_or_404(id)
+
+    name = data.get("name")
+    description = data.get("description")
+    price = data.get("price")
+    stock_quantity = data.get("stock_quantity")
+
+    if not name or not description or not price or not stock_quantity:
+        return jsonify({
+            "error": "Missing required fields"
+        }), 400
+
+    try:
+        price = float(price)
+        stock_quantity = int(stock_quantity)
+        if price < 0.0 or stock_quantity < 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        return jsonify({
+            "error": "Price must be number and stock quantity must be integer"
+        }), 400
+
+    product.name = name
+    product.description = description
+    product.price = price
+    product.stock_quantity = stock_quantity
+
+    db.session.commit()
+    return jsonify({
+        "id": product.id,
+        "name": product.name,
+        "description": product.description,
+        "price": product.price,
+        "stock_quantity": product.stock_quantity,
+        "created_at": product.created_at.isoformat() if product.created_at else None,
+        "updated_at": product.updated_at.isoformat() if product.updated_at else None,
+    }), 200
+
 @bp.route('/cart',methods=['POST'])
 @jwt_required()
 def add_products_to_cart():
