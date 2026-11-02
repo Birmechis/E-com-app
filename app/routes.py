@@ -285,3 +285,43 @@ def add_products_to_cart():
     return jsonify({
         "message": f"Successfully added {product.name} to cart"
     }), 200
+
+@bp.route('/cart', methods=['GET'])
+@jwt_required()
+def get_cart():
+
+    cart = CartItems.query.all()
+    if not cart:
+        return jsonify({
+            "error": "CartItem does not exist"
+        }), 404
+
+    result = []
+    for item in cart:
+        result.append({
+            "id": item.id,
+            "quantity": item.quantity,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+        })
+
+    return jsonify({
+        "cart": result
+    }), 200
+
+@bp.route('/cart/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_products_from_cart(id):
+
+    cart_item = CartItems.query.get(id)
+    if not cart_item:
+        return jsonify({
+            "error": "Product does not exist in cart"
+        }), 404
+
+    db.session.delete(cart_item)
+    db.session.commit()
+
+    return jsonify({
+          "message": "Successfully deleted item from cart"
+    }), 200
+
