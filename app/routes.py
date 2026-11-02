@@ -151,6 +151,12 @@ def get_products():
 
     page = request.args.get('page', 1, type=int)
     limit = request.args.get('limit', 10, type=int)
+    search_name = request.args.get('search', type=str)
+
+    query = Products.query
+
+    if search_name:
+        query = query.filter_by(Products.name.islike(f"%{search_name}%"))
 
     calculate_offset = (page - 1) * limit
     total_count = Products.query.count()
@@ -279,4 +285,3 @@ def add_products_to_cart():
     return jsonify({
         "message": f"Successfully added {product.name} to cart"
     }), 200
-
