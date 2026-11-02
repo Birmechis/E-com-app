@@ -77,7 +77,7 @@ def login():
             "error": "Invalid email or password"
         }), 401
 
-    token = create_access_token(identity=user.id)
+    token = create_access_token(identity=str(user.id))
 
     return jsonify({
         "message": "login successful",
@@ -142,12 +142,58 @@ def create_products():
         "description": new_products.description,
         "price": new_products.price,
         "stock_quantity": new_products.stock_quantity,
-        "created_at": new_products.created_at,
+        "created_at": new_products.created_at.isoformat() if new_products.created_at else None,
     }), 201
 
-@bp.route('/products/<int:id>',methods=['POST'])
+@bp.route('/products', methods=['GET'])
 @jwt_required()
-def add_products_to_cart(id):
+def get_products():
+
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 10, type=int)
+
+    calculate_offset = (page - 1) * limit
+    total_count = Products.query.count()
+    records = Products.query.offset(calculate_offset).limit(limit).all()
+
+    return jsonify({
+        "products": [
+            {
+                "id": prod.id,
+                "name": prod.name,
+                "description": prod.description,
+                "price": prod.price,
+                "stock_quantity": prod.stock_quantity,
+                "created_at": prod.created_at.isoformat() if prod.created_at else None,
+            }for prod in records
+        ],
+        "page": page,
+        "limit": limit,
+        "total": total_count,
+    }), 200
+
+@bp.route('/products/<int:id>', methods=['GET'])
+@jwt_required()
+def get_products_by_id(id):
+
+    product = Products.query.get(id)
+    if not product:
+        return jsonify({
+            "error": "Product does not exist"
+        }), 404
+
+    return jsonify({
+        "id": product.id,
+        "name": product.name,
+        "description": product.description,
+        "price": product.price,
+        "stock_quantity": product.stock_quantity,
+        "created_at": product.created_at.isoformat() if product.created_at else None,
+    }), 200
+
+@bp.route('/cart',methods=['POST'])
+@jwt_required()
+def add_products_to_cart():
     data = request.get_json(silent=True)
 
     product_id = data.get("product_id")
