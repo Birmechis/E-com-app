@@ -324,4 +324,3 @@ def delete_products_from_cart(id):
     return jsonify({
           "message": "Successfully deleted item from cart"
     }), 200
-
