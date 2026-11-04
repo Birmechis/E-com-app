@@ -9,7 +9,7 @@ class Users(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     def __repr__(self):
-        return f"User('{self.username}', '{self.email}', '{self.password}')"
+        return f"User('{self.username}', '{self.email}')"
 
 class Products(db.Model):
     id = db.Column(db.Integer, primary_key=True, nullable=False)
@@ -25,9 +25,27 @@ class Products(db.Model):
 
 class CartItems(db.Model):
     id = db.Column(db.Integer, primary_key=True, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey(Users.id), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey(Products.id), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     def __repr__(self):
         return f"CartItem('{self.product_id}', '{self.quantity}')"
+
+
+class Payments(db.Model):
+    id = db.Column(db.Integer, primary_key=True, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey(Users.id), nullable=False)
+    tx_ref = db.Column(db.String(100), unique=True, nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(10), nullable=False)
+    status = db.Column(db.String(30), nullable=False, default="pending")
+    created_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    def __repr__(self):
+        return f"Payment('{self.user_id}', '{self.amount}', '{self.currency}')"
