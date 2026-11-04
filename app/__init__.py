@@ -14,6 +14,8 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY')
+    app.config['CHAPA_SECRET_KEY'] = os.getenv('CHAPA_SECRET_KEY')
+    app.config['CHAPA_URL'] = os.getenv('CHAPA_URL')
 
     db.init_app(app)
     jwt.init_app(app)
