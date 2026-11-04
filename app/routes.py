@@ -1,6 +1,6 @@
 from flask import jsonify, request, Blueprint
 from sqlalchemy.exc import IntegrityError
-from flask_jwt_extended import jwt_required, create_access_token
+from flask_jwt_extended import jwt_required, create_access_token, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.models import Users, Products, CartItems
 from app import db
@@ -100,7 +100,7 @@ def create_products():
     price = data.get("price")
     stock_quantity = data.get("stock_quantity")
 
-    if not name or not description or not price or not stock_quantity:
+    if name is None or description is None or price is None or stock_quantity is None:
         return jsonify({
             "error": "Missing name or description or price or stock_quantity"
         }), 400
@@ -156,11 +156,11 @@ def get_products():
     query = Products.query
 
     if search_name:
-        query = query.filter_by(Products.name.islike(f"%{search_name}%"))
+        query = query.filter(Products.name.ilike(f"%{search_name}%"))
 
     calculate_offset = (page - 1) * limit
-    total_count = Products.query.count()
-    records = Products.query.offset(calculate_offset).limit(limit).all()
+    total_count = query.count()
+    records = query.offset(calculate_offset).limit(limit).all()
 
     return jsonify({
         "products": [
@@ -215,7 +215,7 @@ def update_products(id):
     price = data.get("price")
     stock_quantity = data.get("stock_quantity")
 
-    if not name or not description or not price or not stock_quantity:
+    if name is None or description is None or price is None or stock_quantity is None:
         return jsonify({
             "error": "Missing required fields"
         }), 400
@@ -251,8 +251,14 @@ def update_products(id):
 def add_products_to_cart():
     data = request.get_json(silent=True)
 
+    if not isinstance(data, dict):
+        return jsonify({
+            "error": "Invalid or missing JSON payload"
+        }), 400
+
     product_id = data.get("product_id")
     quantity = data.get("quantity")
+    user_id = get_jwt_identity()
 
     product = Products.query.get(product_id)
     if not product:
@@ -260,12 +266,21 @@ def add_products_to_cart():
             "error": "Product does not exist"
         }), 404
 
+    try:
+        quantity = int(quantity)
+        if quantity <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        return jsonify({
+            "error": "Quantity must be positive integer"
+        }), 400
+
     if product.stock_quantity < quantity:
         return jsonify({
             "error": f"Only {product.stock_quantity} items left in stock"
         }), 400
 
-    existing_cart_items = CartItems.query.filter_by(product_id=product_id).first()
+    existing_cart_items = CartItems.query.filter_by(user_id=user_id, product_id=product_id).first()
     if existing_cart_items:
         if product.stock_quantity < (existing_cart_items.quantity + quantity):
             return jsonify({
@@ -275,6 +290,7 @@ def add_products_to_cart():
         existing_cart_items.quantity += quantity
     else:
         new_cart_item = CartItems(
+            user_id = user_id,
             product_id = product_id,
             quantity = quantity,
         )
@@ -290,7 +306,9 @@ def add_products_to_cart():
 @jwt_required()
 def get_cart():
 
-    cart = CartItems.query.all()
+    user_id = get_jwt_identity()
+
+    cart = CartItems.query.filter_by(user_id=user_id).all()
     if not cart:
         return jsonify({
             "error": "CartItem does not exist"
@@ -306,21 +324,4 @@ def get_cart():
 
     return jsonify({
         "cart": result
-    }), 200
-
-@bp.route('/cart/<int:id>', methods=['DELETE'])
-@jwt_required()
-def delete_products_from_cart(id):
-
-    cart_item = CartItems.query.get(id)
-    if not cart_item:
-        return jsonify({
-            "error": "Product does not exist in cart"
-        }), 404
-
-    db.session.delete(cart_item)
-    db.session.commit()
-
-    return jsonify({
-          "message": "Successfully deleted item from cart"
     }), 200
