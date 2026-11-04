@@ -1,8 +1,11 @@
-from flask import jsonify, request, Blueprint
+import uuid
+import requests
+from decimal import Decimal
+from flask import jsonify, request, Blueprint, current_app
 from sqlalchemy.exc import IntegrityError
 from flask_jwt_extended import jwt_required, create_access_token, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
-from app.models import Users, Products, CartItems
+from app.models import Users, Products, CartItems, Payments
 from app import db
 
 bp = Blueprint('api', __name__)
@@ -324,4 +327,101 @@ def get_cart():
 
     return jsonify({
         "cart": result
+    }), 200
+
+@bp.route('/checkout', methods=['POST'])
+@jwt_required()
+def checkout():
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({
+            "error": "Invalid or missing JSON payload"
+        }), 400
+
+    user_id = get_jwt_identity()
+    user = Users.query.get(user_id)
+
+    currency = data.get("currency")
+    if currency not in ["ETB", "USD"]:
+        return jsonify({
+            "error": "Unsupported currency"
+        }), 400
+
+    cart_items = CartItems.query.filter_by(user_id=user_id).all()
+
+    if not cart_items:
+        return jsonify({
+            "error": "Your cart is empty"
+        }), 400
+
+    total_price = Decimal(0.00)
+    for item in cart_items:
+        product = Products.query.get(item.product_id)
+        total_price += Decimal(str(product.price)) * item.quantity
+
+    transaction_reference = f"{uuid.uuid4().hex[:10]}"
+
+    payments = Payments(
+        user_id = user_id,
+        tx_ref = transaction_reference,
+        amount = total_price,
+        currency = currency
+    )
+
+    db.session.add(payments)
+    db.session.commit()
+
+    payload = {
+        "amount": str(total_price),
+        "currency": currency,
+        "email": user.email,
+        "first_name": user.username,
+        "tx_ref": transaction_reference,
+        "callback_url": "https://crudely-unworthy-unshackle.ngrok-free.dev/payment/callback",
+        "return_url": "http://127.0.0.1:5000/payment/success"
+    }
+
+    chapa_url = current_app.config["CHAPA_URL"]
+    chapa_secret = current_app.config["CHAPA_SECRET_KEY"]
+
+    headers = {
+        "Authorization": f"Bearer {chapa_secret}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.post(
+            chapa_url,
+            json=payload,
+            headers=headers,
+            timeout=30
+        )
+
+        response.raise_for_status()
+        response_data = response.json()
+
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "error": "Payment request timed out"
+        }), 504
+    except requests.exceptions.RequestException:
+        return jsonify({
+            "error": "Unable to connect to payment gateway"
+        }), 502
+    except ValueError:
+        return jsonify({
+            "error": "Invalid response from payment gateway"
+        }), 502
+
+    if response.status_code != 200 or response_data.get("status") != "success":
+        return jsonify({
+            "error": "Payment initialization failed",
+            "detail": response_data
+        }), 400
+
+    return jsonify({
+        "message": "Payment initialization successful",
+        "checkout_url": response_data['data']['checkout_url'],
+        "tx_ref": transaction_reference
     }), 200
