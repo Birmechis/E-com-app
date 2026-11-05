@@ -342,6 +342,11 @@ def checkout():
     user_id = get_jwt_identity()
     user = Users.query.get(user_id)
 
+    if not user:
+        return jsonify({
+            "error": "User does not exist"
+        }), 404
+
     currency = data.get("currency")
     if currency not in ["ETB", "USD"]:
         return jsonify({
@@ -355,7 +360,7 @@ def checkout():
             "error": "Your cart is empty"
         }), 400
 
-    total_price = Decimal(0.00)
+    total_price = 0
     for item in cart_items:
         product = Products.query.get(item.product_id)
         total_price += Decimal(str(product.price)) * item.quantity
@@ -373,13 +378,14 @@ def checkout():
     db.session.commit()
 
     payload = {
-        "amount": str(total_price),
+        "amount": int(total_price),
         "currency": currency,
-        "email": user.email,
-        "first_name": user.username,
-        "tx_ref": transaction_reference,
+        "merchant_reference": transaction_reference,
+        "customer": {
+            "email": user.email,
+            "first_name": user.username,
+        },
         "callback_url": "https://crudely-unworthy-unshackle.ngrok-free.dev/payment/callback",
-        "return_url": "http://127.0.0.1:5000/payment/success"
     }
 
     chapa_url = current_app.config["CHAPA_URL"]
@@ -387,7 +393,8 @@ def checkout():
 
     headers = {
         "Authorization": f"Bearer {chapa_secret}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Idempotency-Key": transaction_reference
     }
 
     try:
@@ -405,7 +412,8 @@ def checkout():
         return jsonify({
             "error": "Payment request timed out"
         }), 504
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        print("CHAPA CONNECTION ERROR:", repr(e))
         return jsonify({
             "error": "Unable to connect to payment gateway"
         }), 502
