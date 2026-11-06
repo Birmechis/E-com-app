@@ -329,6 +329,96 @@ def get_cart():
         "cart": result
     }), 200
 
+@bp.route('/cart/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_cart(id):
+
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return jsonify({
+            "error": "Invalid or missing JSON payload"
+        }), 400
+
+    quantity = data.get("quantity")
+    user_id = get_jwt_identity()
+
+    if quantity is None:
+        return jsonify({
+            "error": "Quantity must be provided"
+        }), 400
+
+    try:
+        quantity = int(quantity)
+        if quantity <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        return jsonify({
+            "error": "Quantity must be positive integer"
+        }), 400
+
+    cart_item = CartItems.query.filter_by(id=id).first()
+
+    if not cart_item:
+        return jsonify({
+            "error": "CartItem does not exist"
+        }), 404
+
+    if cart_item.user_id != user_id:
+        return jsonify({
+            "error": "Forbidden"
+        }), 403
+
+    product = Products.query.get(cart_item.product_id)
+
+    if not product:
+        return jsonify({
+            "error": "Product does not exist"
+        }), 404
+
+
+    if product.stock_quantity < quantity:
+            return jsonify({
+                "error": "Cannot add more. Exceeds available stock"
+            }), 400
+
+    cart_item.quantity = quantity
+
+    db.session.commit()
+
+    return jsonify({
+        "message": "Successfully updated cart",
+        "cart_id": cart_item.id,
+        "product_id": cart_item.product_id,
+        "quantity": cart_item.quantity,
+    }), 200
+
+@bp.route('/cart/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_cart(id):
+
+    user_id = get_jwt_identity()
+
+    cart_item = CartItems.query.filter_by(id=id).first()
+
+    if not cart_item:
+        return jsonify({
+            "error": "CartItem does not exist"
+        }), 404
+
+    if cart_item.user_id != user_id:
+        return jsonify ({
+            "error": "Forbidden"
+        }), 403
+
+    db.session.delete(cart_item)
+    db.session.commit()
+
+    return jsonify({
+        "msg": "Successfully deleted cart"
+    }), 200
+
+
 @bp.route('/checkout', methods=['POST'])
 @jwt_required()
 def checkout():
